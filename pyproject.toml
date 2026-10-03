@@ -1,0 +1,22 @@
+[project]
+name = "mojo-dm-control"
+version = "0.1.0"
+description = "dm_control's physics control primitives implemented in Mojo"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Lee Penkman", email = "leepenkman@gmail.com" }]
+keywords = ["mojo", "dm_control", "mujoco", "physics", "control"]
+dependencies = ["numpy", "dm-tree"]
+
+[project.optional-dependencies]
+dev = ["pytest", "scipy", "dm-control"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = { "" = "python" }
+
+[tool.setuptools.packages.find]
+where = ["python"]
