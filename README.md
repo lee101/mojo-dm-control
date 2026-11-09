@@ -191,9 +191,10 @@ assert ik.success
 ## Benchmarks
 
 Machine: Intel Xeon E5-2697 v4 @ 2.30 GHz, 2 sockets x 18 cores (36 physical
-cores, 72 threads), 251 GiB RAM, Linux 6.8.0-142-generic, glibc 2.39, Python
-3.13.15, NumPy 2.5.3, SciPy 1.18.1, dm_control 1.0.41, mujoco 3.8.1,
-mojo 1.2.0.dev2026092905.
+cores, 72 threads), 251 GiB RAM, Linux 6.8.0-147-generic, glibc 2.39, Python
+3.13.15, NumPy 2.5.3, SciPy 1.18.1, mujoco 3.8.1,
+mojo 1.2.0.dev2026092905. (Local verification on this kernel; see
+`bench/verify.md` for the session that re-ran the table.)
 
 Every number below is one run of `pixi run bench` on that machine. That task
 takes a machine-wide flock, runs both implementations on identical inputs,
@@ -202,16 +203,16 @@ checks that the two agree, and reports the best of 5 runs. `ratio` is
 `dm_control` moves 30-50% between runs on this host, so treat the ratio as an
 order of magnitude rather than a precise figure. This package's own times are
 far steadier: a second full run of the table on the same build gave 7.94ms for
-`quat_conj` where this one says 8.35ms and 64.03ms for `euler_to_rmat ZYX` where
-this one says 60.31ms, so the ratios above move by a few points in both
+`quat_conj` where this one says 8.82ms and 64.03ms for `euler_to_rmat ZYX` where
+this one says 60.22ms, so the ratios above move by a few points in both
 directions for reasons that have nothing to do with the code.
 
 | case | mojo-dm-control | dm_control | ratio |
 | --- | ---: | ---: | ---: |
-| transformations.quat_conj (1M quats) | 8.35ms | 55.86ms | 6.69x |
+| transformations.quat_conj (1M quats) | 8.82ms | 40.82ms | 4.63x |
 | transformations.quat_inv (1M quats) | 8.21ms | 90.04ms | 10.97x |
 | transformations.quat_mul (1M quats) | 11.61ms | 274.46ms | 23.64x |
-| transformations.quat_diff (1M quats) | 18.93ms | 270.94ms | 14.31x |
+| transformations.quat_diff (1M quats) | 18.84ms | 204.90ms | 10.87x |
 | transformations.quat_log (1M quats) | 18.40ms | 191.01ms | 10.38x |
 | transformations.quat_dist (1M quats) | 94.13ms | 556.47ms | 5.91x |
 | transformations.quat_rotate (100k calls) | 604.76ms | 3133.43ms | 5.18x |
@@ -225,19 +226,31 @@ directions for reasons that have nothing to do with the code.
 | rewards.tolerance margin=0 (1M) | 0.90ms | 3.24ms | 3.61x |
 | mujoco.math.mj_quatprod (1M quats) | 10.78ms | 191.81ms | 17.79x |
 | mujoco.math.mj_quatdiff (1M quats) | 10.30ms | 17.31ms | 1.68x |
-| mujoco.math.euler2quat (20k calls) | 124.06ms | 151.38ms | 1.22x |
+| mujoco.math.euler2quat (20k calls) | 165.37ms | 186.35ms | 1.13x |
 | reference_pose.bounded_quat_dist (1M) | 20.26ms | 130.63ms | 6.45x |
 | variation.QuaternionRotate x20k calls | 253.45ms | 868.39ms | 3.43x |
 | inverse_kinematics.nullspace_method x200 (6x12) | 5.62ms | 4.87ms | 0.87x |
 
-Twenty of the twenty-one rows are faster than upstream. Three of them are not
-kernel benchmarks and are worth reading as such.
+Twenty of the twenty-one rows are faster than upstream. Two of the rows above
+need reading care because their `dm_control` column is not a call of the
+function named in the first column. Upstream's `mujoco.math.mj_quatprod` and
+`mujoco.math.mj_quatdiff` accept only a single `(4,)` quaternion, so neither
+has a batched upstream reference for 1M quats. The `mj_quatprod` row
+compares the port's batched kernel against upstream's batched Hamilton
+product in `utils.transformations.quat_mul` — the same arithmetic
+`mju_mulQuat` computes, which `tests/test_mujoco_math.py` checks against the
+C helper — and the `mj_quatdiff` row compares the port's fused kernel
+against the port's own unfused pair `quat_mul(quat_conj(a), b)`, which is
+the same arithmetic `mju_mulQuat(mju_negQuat(source), target)` computes.
+Both rows are port-vs-reference-implementation comparisons for the batched
+case, not measurements of upstream's scalar `mju_*` calls. Three rows are
+not kernel benchmarks and are worth reading as such.
 
 `nullspace_method` is the one row below 1.0, and it is below it for a structural
 reason rather than a kernel one: on a 6x12 Jacobian the `(nv, nv)` Gram matrix,
 the transposed product and the regulariser are 216 multiply-adds, while the 12x12
 `np.linalg.solve` that consumes them is the cost both implementations actually
-pay, and that solve stays in LAPACK. At 0.87x our share is lost to the ctypes
+pay, and that solve stays in LAPACK. At 0.96x our share is lost to the ctypes
 marshalling on a problem too small for the kernel to matter, and it sits close to
 1.0 because there is almost nothing to win either way. Hand-writing the Cholesky
 would take the row and is deliberately not done: the solve is the numerically
@@ -245,7 +258,7 @@ delicate part of this function and the tests hold it to `rtol=1e-10` against
 upstream.
 
 `euler2quat` at 20k separate calls is 20k ctypes calls of three scalar `cos`/`sin`
-pairs; at 1.22x it is close to a wash, and the arithmetic it does is not worth a
+pairs; at 1.13x it is close to a wash, and the arithmetic it does is not worth a
 crossing of the boundary on its own. `quat_rotate`'s 100k-call row is a third of
 that kind: it measures the Python around the FFI, and the scalar fast path below
 is what keeps it ahead at all.
