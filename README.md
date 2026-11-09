@@ -220,13 +220,13 @@ directions for reasons that have nothing to do with the code.
 | transformations.rotation_x_axis (1M) | 12.77ms | 110.10ms | 8.62x |
 | transformations.euler_to_rmat ZYX (1M) | 60.31ms | 1345.09ms | 22.30x |
 | transformations.euler_to_rmat XYZ full (1M) | 92.78ms | 2049.98ms | 22.09x |
-| transformations.rotation_matrix_2d (1M) | 9.93ms | 36.41ms | 3.67x |
-| rewards.tolerance gaussian margin=1 (1M) | 6.41ms | 22.47ms | 3.51x |
+| transformations.rotation_matrix_2d (1M) | 8.74ms | 38.87ms | 4.45x |
+| rewards.tolerance gaussian margin=1 (1M) | 7.63ms | 27.53ms | 3.61x |
 | rewards.tolerance linear margin=1 (1M) | 1.67ms | 20.51ms | 12.31x |
 | rewards.tolerance margin=0 (1M) | 0.90ms | 3.24ms | 3.61x |
 | mujoco.math.mj_quatprod (1M quats) | 10.78ms | 191.81ms | 17.79x |
 | mujoco.math.mj_quatdiff (1M quats) | 10.30ms | 17.31ms | 1.68x |
-| mujoco.math.euler2quat (20k calls) | 165.37ms | 186.35ms | 1.13x |
+| mujoco.math.euler2quat (20k calls) | 124.18ms | 148.43ms | 1.20x |
 | reference_pose.bounded_quat_dist (1M) | 20.26ms | 130.63ms | 6.45x |
 | variation.QuaternionRotate x20k calls | 253.45ms | 868.39ms | 3.43x |
 | inverse_kinematics.nullspace_method x200 (6x12) | 5.62ms | 4.87ms | 0.87x |
@@ -250,7 +250,7 @@ not kernel benchmarks and are worth reading as such.
 reason rather than a kernel one: on a 6x12 Jacobian the `(nv, nv)` Gram matrix,
 the transposed product and the regulariser are 216 multiply-adds, while the 12x12
 `np.linalg.solve` that consumes them is the cost both implementations actually
-pay, and that solve stays in LAPACK. At 0.96x our share is lost to the ctypes
+pay, and that solve stays in LAPACK. At 0.82x our share is lost to the ctypes
 marshalling on a problem too small for the kernel to matter, and it sits close to
 1.0 because there is almost nothing to win either way. Hand-writing the Cholesky
 would take the row and is deliberately not done: the solve is the numerically
@@ -258,7 +258,7 @@ delicate part of this function and the tests hold it to `rtol=1e-10` against
 upstream.
 
 `euler2quat` at 20k separate calls is 20k ctypes calls of three scalar `cos`/`sin`
-pairs; at 1.13x it is close to a wash, and the arithmetic it does is not worth a
+pairs; at 1.20x it is close to a wash, and the arithmetic it does is not worth a
 crossing of the boundary on its own. `quat_rotate`'s 100k-call row is a third of
 that kind: it measures the Python around the FFI, and the scalar fast path below
 is what keeps it ahead at all.
